@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FCC D3 Bar Chart – GDP</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+
+    <style>
+      :root {
+        --bg: #0f1320;
+        --fg: #e6e6e6;
+        --muted: #9aa3b2;
+        --accent: #6aa6ff;
+        --bar: #7ca9ff;
+        --bar-hover: #aac6ff;
+        --grid: #2a2f3d;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          "Helvetica Neue", Arial;
+        background: radial-gradient(
+          1200px 800px at 20% 0%,
+          #151a2b 0%,
+          var(--bg) 45%,
+          #0b0e19 100%
+        );
+        color: var(--fg);
+        display: grid;
+        place-items: center;
+        min-height: 100svh;
+      }
+
+      .card {
+        width: min(1100px, 95vw);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+        backdrop-filter: blur(6px);
+        padding: 18px 20px 10px;
+      }
+
+      #title {
+        margin: 8px 8px 0;
+        text-align: center;
+        font-weight: 800;
+        letter-spacing: 0.4px;
+        font-size: clamp(20px, 2.6vw, 28px);
+      }
+
+      .subtitle {
+        color: var(--muted);
+        text-align: center;
+        margin: 4px 8px 14px;
+        font-size: 14px;
+      }
+
+      .subtitle a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .wrap {
+        position: relative;
+        overflow: visible;
+      }
+
+      svg {
+        width: 100%;
+        height: auto;
+        font-size: 12px;
+      }
+
+      .bar {
+        fill: var(--bar);
+        transition: fill 0.15s ease, opacity 0.15s ease;
+      }
+
+      .bar:hover {
+        fill: var(--bar-hover);
+      }
+
+      .axis path,
+      .axis line {
+        stroke: var(--grid);
+      }
+
+      .axis text {
+        fill: var(--fg);
+      }
+
+      .x-grid .tick line,
+      .y-grid .tick line {
+        stroke: var(--grid);
+        stroke-opacity: 0.8;
+      }
+
+      /* Tooltip amélioré */
+      #tooltip {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        background: #101523;
+        color: var(--fg);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        padding: 8px 10px;
+        border-radius: 10px;
+        line-height: 1.3;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+        font-size: 12px;
+        white-space: nowrap;
+
+        /* transition smooth */
+        transform: translateY(5px);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+
+      #tooltip.show {
+        opacity: 1;
+        transform: translateY(0px);
+      }
+
+      .legend {
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+        margin: 6px 0 4px;
+      }
+
+      .legend .swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        background: var(--bar);
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
+        svg {
+          font-size: 10px;
+        }
+        #tooltip {
+          font-size: 10px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="card">
+      <h1 id="title">United States GDP (Quarterly)</h1>
+
+      <div class="subtitle">
+        Source: <a href="https://www.bea.gov/" target="_blank">BEA.gov</a> •
+        Data via FreeCodeCamp
+      </div>
+
+      <div class="wrap">
+        <div id="tooltip"></div>
+        <svg id="chart"></svg>
+      </div>
+
+      <div class="legend">
+        <span class="swatch"></span> Gross Domestic Product (Billions of
+        Dollars)
+      </div>
+    </div>
+
+    <!-- D3 -->
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+    <!-- FCC Tests -->
+    <script src="https://cdn.freecodecamp.org/testable-projects-fcc/v1/bundle.js"></script>
+
+    <script>
+      const DATA_URL =
+        "https://raw.githubusercontent.com/freeCodeCamp/ProjectReferenceData/master/GDP-data.json";
+
+      const outer = { w: 1000, h: 540 };
+      const m = { top: 40, right: 30, bottom: 70, left: 75 };
+      const w = outer.w - m.left - m.right;
+      const h = outer.h - m.top - m.bottom;
+
+      const svg = d3
+        .select("#chart")
+        .attr("width", outer.w)
+        .attr("height", outer.h);
+
+      const g = svg
+        .append("g")
+        .attr("transform", `translate(${m.left},${m.top})`);
+
+      const tooltip = d3.select("#tooltip");
+
+      d3.json(DATA_URL).then((json) => {
+        const dataset = json.data.map((d) => ({
+          date: new Date(d[0]),
+          dateStr: d[0],
+          gdp: +d[1],
+        }));
+
+        // Scales
+        const x = d3
+          .scaleTime()
+          .domain(d3.extent(dataset, (d) => d.date))
+          .range([0, w]);
+
+        const y = d3
+          .scaleLinear()
+          .domain([0, d3.max(dataset, (d) => d.gdp)])
+          .nice()
+          .range([h, 0]);
+
+        // Axes
+        const xAxis = d3.axisBottom(x).ticks(10).tickSizeOuter(0);
+        const yAxis = d3.axisLeft(y).ticks(10).tickSizeOuter(0);
+
+        // Gridlines X (vertical)
+        g.append("g")
+          .attr("class", "x-grid")
+          .attr("transform", `translate(0,${h})`)
+          .call(d3.axisBottom(x).ticks(10).tickSize(-h).tickFormat(""));
+
+        // Gridlines Y (horizontal)
+        g.append("g")
+          .attr("class", "y-grid")
+          .call(d3.axisLeft(y).ticks(10).tickSize(-w).tickFormat(""));
+
+        // Axis draw
+        g.append("g")
+          .attr("id", "x-axis")
+          .attr("class", "axis")
+          .attr("transform", `translate(0,${h})`)
+          .call(xAxis);
+
+        g.append("g").attr("id", "y-axis").attr("class", "axis").call(yAxis);
+
+        // Bars
+        const barWidth = w / dataset.length;
+
+        g.selectAll(".bar")
+          .data(dataset)
+          .join("rect")
+          .attr("class", "bar")
+          .attr("data-date", (d) => d.dateStr)
+          .attr("data-gdp", (d) => d.gdp)
+          .attr("x", (d) => x(d.date))
+          .attr("y", h)
+          .attr("width", Math.max(0.5, barWidth))
+          .attr("height", 0)
+          // animation d'apparition
+          .transition()
+          .duration(900)
+          .attr("y", (d) => y(d.gdp))
+          .attr("height", (d) => h - y(d.gdp));
+
+        // Interaction
+        g.selectAll(".bar")
+          .on("mousemove", function (event, d) {
+            const billions = d.gdp.toLocaleString("en-US", {
+              maximumFractionDigits: 1,
+            });
+
+            const q = Math.floor(d.date.getUTCMonth() / 3) + 1;
+
+            tooltip
+              .html(
+                `<strong>${d.date.getUTCFullYear()} Q${q}</strong><br>GDP: $${billions}B`
+              )
+              .attr("data-date", d.dateStr)
+              .classed("show", true)
+              .style("left", event.pageX + 12 + "px")
+              .style("top", event.pageY - 40 + "px");
+          })
+          .on("mouseout", function () {
+            tooltip.classed("show", false);
+          });
+
+        // Axis labels
+        svg
+          .append("text")
+          .attr("x", m.left + w / 2)
+          .attr("y", outer.h - 24)
+          .attr("text-anchor", "middle")
+          .attr("fill", "#cbd5e1")
+          .style("font-size", "12px")
+          .text("Year");
+
+        svg
+          .append("text")
+          .attr("transform", `translate(18, ${m.top + h / 2}) rotate(-90)`)
+          .attr("text-anchor", "middle")
+          .attr("fill", "#cbd5e1")
+          .style("font-size", "12px")
+          .text("GDP (Billions of Dollars)");
+      });
+    </script>
+  </body>
+</html>
